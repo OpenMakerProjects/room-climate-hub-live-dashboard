@@ -1,107 +1,63 @@
 #include <Arduino.h>
-
-#ifndef LED_BUILTIN
-#define LED_BUILTIN 2
-#endif
-
-// Room Climate Hub Live Dashboard
-// Roadmap project 1; mode: telemetry
-constexpr uint8_t SENSOR_PINS[] = {A0, A1, A2};
-constexpr size_t SENSOR_COUNT = sizeof(SENSOR_PINS) / sizeof(SENSOR_PINS[0]);
-constexpr uint8_t OUTPUT_PIN = LED_BUILTIN;
-constexpr unsigned long SAMPLE_INTERVAL_MS = 1000UL;
-constexpr float TRIGGER_THRESHOLD = 0.46f;
-constexpr uint8_t REQUIRED_CONFIRMATIONS = 3;
-
-enum class SystemState : uint8_t { Starting, Normal, Active, Fault };
-
-struct Snapshot {
-  float values[SENSOR_COUNT];
-  float score;
-  bool valid;
-};
-
-SystemState state = SystemState::Starting;
-unsigned long lastSampleAt = 0;
-uint8_t confirmations = 0;
-bool outputActive = false;
-
-float normalizeReading(int raw) {
-  return constrain(raw / 1023.0f, 0.0f, 1.0f);
+#include <WiFi.h>
+#include <WebServer.h>
+#include <Wire.h>
+#include "control.h"
+#include "config.h"
+constexpr uint8_t PIR_PIN = 27, RELAY_PIN = 26, SDA_PIN = 21, SCL_PIN = 22;
+constexpr uint8_t INA_ADDR = 0x40;
+WebServer server(80);
+Control control;
+uint32_t lastSample = 0;
+bool initialized = false;
+bool writeRegister(uint8_t reg, uint16_t value) {
+  Wire.beginTransmission(INA_ADDR); Wire.write(reg);
+  Wire.write(uint8_t(value >> 8)); Wire.write(uint8_t(value));
+  return Wire.endTransmission() == 0;
 }
-
-Snapshot acquireSnapshot() {
-  Snapshot snapshot{};
-  snapshot.valid = true;
-  float sum = 0.0f;
-  for (size_t index = 0; index < SENSOR_COUNT; ++index) {
-    const int raw = analogRead(SENSOR_PINS[index]);
-    if (raw < 0) snapshot.valid = false;
-    snapshot.values[index] = normalizeReading(raw);
-    sum += snapshot.values[index];
-  }
-  snapshot.score = sum / SENSOR_COUNT;
-  return snapshot;
+bool readRegister(uint8_t reg, uint16_t &value) {
+  Wire.beginTransmission(INA_ADDR); Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom(INA_ADDR, uint8_t(2)) != 2) return false;
+  value = uint16_t(Wire.read()) << 8; value |= uint8_t(Wire.read()); return true;
 }
-
-bool decide(const Snapshot &snapshot) {
-  if (!snapshot.valid) return false;
-  const bool condition = snapshot.score >= TRIGGER_THRESHOLD;
-  if (!condition) {
-    confirmations = 0;
-  } else if (confirmations < REQUIRED_CONFIRMATIONS) {
-    confirmations += 1;
-  }
-  return confirmations >= REQUIRED_CONFIRMATIONS;
+String telemetry() {
+  String result = "{\"project_id\":1,\"uptime_ms\":" + String(millis());
+  result += ",\"motion\":"; result += control.motion ? "true" : "false";
+  result += ",\"current_mA\":"; result += control.valid ? String(control.current_mA, 1) : "null";
+  result += ",\"sensor_ok\":"; result += control.valid ? "true" : "false";
+  result += ",\"relay\":"; result += control.relay ? "true" : "false";
+  return result + "}";
 }
-
-void applyOutput(bool requested, bool valid) {
-  if (!valid) {
-    outputActive = false;
-    state = SystemState::Fault;
-  } else {
-    outputActive = requested;
-    state = requested ? SystemState::Active : SystemState::Normal;
-  }
-  digitalWrite(OUTPUT_PIN, outputActive ? HIGH : LOW);
-}
-
-const char *stateName() {
-  switch (state) {
-    case SystemState::Starting: return "starting";
-    case SystemState::Normal: return "normal";
-    case SystemState::Active: return "active";
-    default: return "fault";
-  }
-}
-
-void publishTelemetry(const Snapshot &snapshot) {
-  Serial.print(R"json({"project_id":1,"mode":"telemetry","state":")json");
-  Serial.print(stateName());
-  Serial.print(R"json(","score":)json");
-  Serial.print(snapshot.score, 3);
-  Serial.print(R"json(,"output":)json");
-  Serial.print(outputActive ? "true" : "false");
-  Serial.print(R"json(,"values":[)json");
-  for (size_t index = 0; index < SENSOR_COUNT; ++index) {
-    if (index) Serial.print(',');
-    Serial.print(snapshot.values[index], 3);
-  }
-  Serial.println("]}");
-}
-
+const char PAGE[] PROGMEM = R"html(<!doctype html><html><meta charset="utf-8"><title>Room Climate Hub</title><h1>Live motion and lamp current</h1><p>Low-voltage educational prototype. No climate sensor is fitted.</p><pre id="data">Loading</pre><button onclick="set(false)">Lamp OFF</button><button onclick="set(true)">Lamp ON</button><script>async function refresh(){try{const r=await fetch('/api/status');document.getElementById('data').textContent=JSON.stringify(await r.json(),null,2)}catch(e){document.getElementById('data').textContent='Device unreachable'}}async function set(on){await fetch('/api/relay?on='+Number(on),{method:'POST'});refresh()}refresh();setInterval(refresh,1000)</script></html>)html";
 void setup() {
-  pinMode(OUTPUT_PIN, OUTPUT);
-  digitalWrite(OUTPUT_PIN, LOW);
-  Serial.begin(115200);
-  state = SystemState::Normal;
+  pinMode(RELAY_PIN, OUTPUT); digitalWrite(RELAY_PIN, LOW); pinMode(PIR_PIN, INPUT);
+  Serial.begin(115200); Wire.begin(SDA_PIN, SCL_PIN);
+  // 32V bus range, +/-320mV shunt, continuous 12-bit shunt and bus conversions.
+  // 0.1 ohm shunt, 100uA/bit current LSB: 0.04096/(0.0001*0.1) = 4096.
+  initialized = writeRegister(0x00, 0x399F) && writeRegister(0x05, 4096);
+  WiFi.mode(WIFI_AP);
+  if (!WiFi.softAP(AP_SSID, AP_PASSWORD)) Serial.println("AP startup failed; relay remains off");
+  server.on("/", HTTP_GET, [](){ server.send(200,"text/html",PAGE); });
+  server.on("/api/status", HTTP_GET, [](){ server.send(200,"application/json",telemetry()); });
+  server.on("/api/relay", HTTP_POST, [](){
+    if (!server.hasArg("on") || (server.arg("on") != "0" && server.arg("on") != "1")) {
+      server.send(400,"text/plain","on must be 0 or 1"); return;
+    }
+    if (server.arg("on") == "1" && !control.valid) { server.send(409,"text/plain","sensor not ready"); return; }
+    control.command(server.arg("on") == "1"); digitalWrite(RELAY_PIN, control.relay ? HIGH : LOW);
+    server.send(200,"application/json",telemetry());
+  });
+  server.onNotFound([](){ server.send(404,"text/plain","Not found"); });
+  server.begin();
 }
-
 void loop() {
-  const unsigned long now = millis();
-  if (now - lastSampleAt < SAMPLE_INTERVAL_MS) return;
-  lastSampleAt = now;
-  const Snapshot snapshot = acquireSnapshot();
-  applyOutput(decide(snapshot), snapshot.valid);
-  publishTelemetry(snapshot);
+  server.handleClient();
+  const uint32_t now = millis(); if (uint32_t(now-lastSample) < 1000) return; lastSample=now;
+  uint16_t raw=0, bus=0;
+  if (!initialized) initialized = writeRegister(0,0x399F) && writeRegister(5,4096);
+  bool ok = initialized && readRegister(2,bus) && (bus & 2) && !(bus & 1) && readRegister(4,raw);
+  if (!ok) initialized=false;
+  control.sample(digitalRead(PIR_PIN)==HIGH, float(int16_t(raw))*0.1f, ok);
+  digitalWrite(RELAY_PIN, control.relay ? HIGH : LOW); Serial.println(telemetry());
 }
