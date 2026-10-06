@@ -17,3 +17,9 @@ the full board toolchain or electrical behavior.
 Required project image generation succeeded, but GitHub create_blob upload was rejected
 with `user rejected MCP tool call`. The PNG has not been committed. This PR must remain
 unmerged until the image is uploaded and the complete required tree passes validation.
+
+## GitHub cloud board build
+
+The `board` job of run 37406890175 passed PlatformIO's esp32dev build for firmware
+commit 499f7450d9495d26501a2cc76d8da915a46809c4. The `host` completion job failed
+at the missing PNG gate. The firmware compiled; no physical hardware was tested.

@@ -91,7 +91,7 @@ pio device monitor --baud 115200 --port YOUR_BOARD_PORT
 ```
 
 `platformio.ini` pins espressif32 6.9.0. The board build requires network access to
-download that platform/toolchain. It has not been executed in this run. Source lives
+download that platform/toolchain. It passed on GitHub Actions for commit 499f7450d9495d26501a2cc76d8da915a46809c4. Source lives
 in `firmware/room-climate-hub-live-dashboard/`.
 
 Edit `config.h` before hardware use. `demo-only-01` is a public demonstration AP
@@ -136,8 +136,8 @@ completion validator additionally requires the real PNG; it is expected to fail
 until the rejected image upload is resolved. This explicit partial mode is not a
 completion claim. [Recorded validation](docs/validation-results.md).
 
-No physical hardware test, board toolchain build, electrical validation or radio test
-has occurred. [Hardware test plan](docs/test-plan.md) lists those required checks.
+The pinned ESP32 board build passed in GitHub Actions. No physical hardware test,
+electrical validation or radio test has occurred. [Hardware test plan](docs/test-plan.md) lists those required checks.
 CI runs full completion validation and the pinned PlatformIO board build, so a PR
 with the missing PNG must remain blocked.
 
