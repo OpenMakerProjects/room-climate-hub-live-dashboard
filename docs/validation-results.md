@@ -1,25 +1,13 @@
-# Cloud validation, 2026-10-06
+# Verified cloud validation — 2026-10-06
 
-Executed in the cloud on 2026-10-06:
-- `python tools/validate.py`: PASS.
-- `python tools/validate_completion.py --allow-pending-image`: PASS (partial only).
-- Native C++ control compiled with g++ C++11, Wall/Wextra/Werror and all assertions passed.
-- XML parsing, firmware/README/SVG pin consistency, JSON sample, MIT text, local
-  links excluding the explicitly pending image, and basic secret patterns passed.
-- Full completion gate fails because the required PNG is not committed.
-- Board build and physical hardware remain unverified; no hardware testing claimed.
+- Legacy metadata validator: passed.
+- Native C++ control tests (g++ C++11, Wall/Wextra/Werror): passed.
+- SVG XML and cross-file GPIO21/22/26/27 consistency: passed; SVG rendered/inspected.
+- JSON schema/sample, MIT text, relative links and credential-pattern checks: passed.
+- Image transport tests: 3 passed, including malformed base64, PNG CRC/trailer rejection and cleanup.
+- GitHub Actions run 37408029403: PNG validation/decoding, same-branch push with runtime GITHUB_TOKEN, full completion gates and ESP32 board build all passed.
+- Decoded branch commit: cbbb55ac65058b6c6186d8a179f9b43638a17c9e.
+- PNG: 1,885,928 bytes, 1536×1024 RGB; SHA256 ea59b12b135a74bd46eee008ec02bc37c8ed0e45e8ef69eb0f6d3705f22e4a9f.
+- Temporary base64 chunks removed; original PNG bytes preserved, including public image provenance. No credential patterns were found in PNG bytes; no private credentials were supplied or committed. The documented AP password is explicitly public demo configuration.
 
-Physical hardware has not been tested.
-The firmware is intended for ESP32 DevKit using PlatformIO's esp32dev target.
-A host C++ build tests actuator fault handling; it does not validate radio, I2C timing,
-the full board toolchain or electrical behavior.
-
-Required project image generation succeeded, but GitHub create_blob upload was rejected
-with `user rejected MCP tool call`. The PNG has not been committed. This PR must remain
-unmerged until the image is uploaded and the complete required tree passes validation.
-
-## GitHub cloud board build
-
-The `board` job of run 37406890175 passed PlatformIO's esp32dev build for firmware
-commit 499f7450d9495d26501a2cc76d8da915a46809c4. The `host` completion job failed
-at the missing PNG gate. The firmware compiled; no physical hardware was tested.
+No physical hardware, electrical or radio testing was performed. The earlier direct binary upload rejection was resolved through the user-authorized text-to-Actions recovery. No force push, stored PAT or skip-ci marker was used.

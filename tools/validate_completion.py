@@ -32,3 +32,13 @@ if args.allow_pending_image:
 else:
     assert image.exists() and image.read_bytes().startswith(b'\x89PNG\r\n\x1a\n'), 'Required PNG missing'
     print('PASS: completion assets and host validation')
+
+# Strict final PNG validation and lossless manifest match; transports must be gone.
+if not args.allow_pending_image:
+    import hashlib
+    from decode_project_image import validate_png
+    manifest=json.loads((root/'docs/images/project-overview.manifest.json').read_text())
+    data=image.read_bytes()
+    assert list(validate_png(data)) == manifest['dimensions']
+    assert len(data)==manifest['bytes'] and hashlib.sha256(data).hexdigest()==manifest['sha256']
+    assert not list((root/'docs/images').glob('project-overview.png.b64.*')), 'Temporary transport remains'

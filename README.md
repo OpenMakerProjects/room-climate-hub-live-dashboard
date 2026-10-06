@@ -12,9 +12,10 @@ does not claim to measure climate. Add such a sensor as future work.
 
 ![Illustrative ESP32 motion and low-voltage lamp-current dashboard](docs/images/project-overview.png)
 
-**PR completion blocker:** the original illustration was generated, but its
-GitHub binary upload was rejected. The path above is pending and this PR must not
-be merged until the PNG is committed. The separate SVG below is the wiring authority.
+The original illustration was transferred losslessly as base64 text and decoded by
+GitHub Actions into the PNG above. SHA-256:
+`ea59b12b135a74bd46eee008ec02bc37c8ed0e45e8ef69eb0f6d3705f22e4a9f`.
+It is an illustrative overview; the separate SVG below is the wiring authority.
 
 ## Features and architecture
 
@@ -132,14 +133,14 @@ The first checks metadata and required legacy files. The partial validator build
 and executes real C++ control tests covering initial OFF, commands, motion, current
 bounds, sensor faults, NaN and fault recovery; it also checks JSON, SVG XML, pin
 consistency, relative links, MIT license and basic secret patterns. The default
-completion validator additionally requires the real PNG; it is expected to fail
-until the rejected image upload is resolved. This explicit partial mode is not a
+completion validator additionally verifies the real PNG and its manifest hash. This explicit partial mode is not a
 completion claim. [Recorded validation](docs/validation-results.md).
 
 The pinned ESP32 board build passed in GitHub Actions. No physical hardware test,
 electrical validation or radio test has occurred. [Hardware test plan](docs/test-plan.md) lists those required checks.
-CI runs full completion validation and the pinned PlatformIO board build, so a PR
-with the missing PNG must remain blocked.
+CI runs full completion validation, image transport regression tests and the pinned
+PlatformIO board build. Image decoding and the board build passed on the decoded
+branch commit; see the recorded validation results.
 
 ## Troubleshooting
 
